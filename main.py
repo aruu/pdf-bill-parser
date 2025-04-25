@@ -1,14 +1,49 @@
+# %%
 from pathlib import Path
 import pandas as pd
-from bill_parser import DummyBillParser
+from bill_parser import DummyBillParser, BillParserA
+import pymupdf
 
 DATA_DIR = "data"
 OUTPUT_DIR = "output"
 FINAL_OUTPUT_FILENAME = "final_output.csv"
 
+
+def extract_pagetexts(pdf_path: str) -> list[str]:
+    """
+    Extract text for each page in a PDF file using PyMuPDF.
+
+    Args:
+        pdf_path (str): Path to the PDF file
+
+    Returns:
+        list[str]: List of strings, each representing the text of a page
+    """
+
+    try:
+        # Open the PDF file
+        doc = pymupdf.open(pdf_path)
+
+        # Initialize an array to store the results
+        pagetexts = [page.get_text() for page in doc]
+
+        # Close the document
+        doc.close()
+
+        return pagetexts
+
+    except FileNotFoundError:
+        return "Error: PDF file not found"
+    except Exception as e:
+        return f"Error occurred: {str(e)}"
+
+
+# %%
 if __name__ == "__main__":
     root_data_path = Path(DATA_DIR)
     root_output_path = Path(OUTPUT_DIR)
+
+    # TODO: Create and parse YAML config file specifying which folder patterns to use with which Parser classes
 
     # First, iterate through all accounts and bills and output a TSV per bill
     for account_path in root_data_path.iterdir():
@@ -16,11 +51,15 @@ if __name__ == "__main__":
             print(bill_path)
 
             # Extract the text by page
-            # pagetexts = extract_pagetexts(file_path)
-            pagetexts = ["asdf", "asdf"]
+            pagetexts = extract_pagetexts(bill_path)
 
             # Parse the pagetexts into CSV format
-            csvtext = DummyBillParser(
+            if account_path.name.startswith("account"):
+                parser_class = DummyBillParser
+            else:
+                parser_class = BillParserA
+
+            csvtext = parser_class(
                 account_path.name,
                 bill_path.name,
                 pagetexts,
