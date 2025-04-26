@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import re
-from datetime import datetime
+from datetime import datetime, date
 
 
 class BillParser(ABC):
@@ -127,7 +127,16 @@ class BillParserA(BillParser):
 
 
 class BillParserB(BillParser):
+    def extract_statement_date(self):
+        for i, current_pagetext in enumerate(self.pagetexts, start=1):
+            if re.findall("Balance from your last statement", current_pagetext):
+                line = current_pagetext.split("\n")[1]
+                return datetime.strptime(line, "Statement date: %B %d, %Y ")
+
     def get_csv(self):
+        # Extract the statement date to resolve the year of the transaction date
+        statement_date = self.extract_statement_date()
+
         output = "account_name,file_name,transaction_date,description,amount\n"
 
         for i, current_pagetext in enumerate(self.pagetexts, start=1):
@@ -187,8 +196,7 @@ class BillParserB(BillParser):
                         # Extract values from the lines
                         match mode:
                             case "transaction_date":
-                                # TODO: Need to infer year from the statement date - forcing to 2024 for now
-                                transaction_date = f"{line} 2024"
+                                transaction_date = line
                                 print(f"mode: '{mode}', line: '{line}'")
                                 mode = "posting_date"
                             case "posting_date":
@@ -206,8 +214,29 @@ class BillParserB(BillParser):
                                 mode = "transaction_date"
 
                                 # Wrap up and iterate to new row
-                                transaction_date = datetime.strptime(
-                                    transaction_date, "%b %d %Y"
+                                # Determine the year from the statement date
+                                statement_date_month = statement_date.month
+                                statement_date_year = statement_date.year
+                                transaction_date_month = datetime.strptime(
+                                    transaction_date.split(" ")[0], "%b"
+                                ).month
+                                transaction_date_day = datetime.strptime(
+                                    transaction_date.split(" ")[1], "%d"
+                                ).day
+
+                                if (
+                                    transaction_date_month != statement_date_month
+                                ) and (statement_date_month == 1):
+                                    # Transaction is in December of the previous year
+                                    transaction_date_year = statement_date_year - 1
+                                else:
+                                    # Transaction is in the same year as the statement date
+                                    transaction_date_year = statement_date_year
+
+                                transaction_date = date(
+                                    transaction_date_year,
+                                    transaction_date_month,
+                                    transaction_date_day,
                                 ).strftime("%Y-%m-%d")
 
                                 output += f"{self.account_name},{self.file_name},{transaction_date},{description.strip()},{amount}\n"
