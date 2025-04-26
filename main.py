@@ -85,7 +85,7 @@ if __name__ == "__main__":
         list_input_dfs = []
         for csv_path in output_account_path.glob("*.csv"):
             print(csv_path)
-            list_input_dfs.append(pd.read_csv(csv_path))
+            list_input_dfs.append(pd.read_csv(csv_path, dtype=str))
         df_combined = pd.concat(list_input_dfs)
         df_combined = df_combined.sort_values(by="transaction_date", kind="stable")
         df_combined.to_csv(output_account_path.with_suffix(".csv"), index=False)
@@ -97,7 +97,7 @@ if __name__ == "__main__":
         if account_csv_path.name == FINAL_OUTPUT_FILENAME:
             continue
         print(account_csv_path)
-        list_input_dfs.append(pd.read_csv(account_csv_path))
+        list_input_dfs.append(pd.read_csv(account_csv_path, dtype=str))
     df_combined = pd.concat(list_input_dfs)
     df_combined = df_combined.sort_values(by="transaction_date", kind="stable")
     df_combined.to_csv(root_output_path / FINAL_OUTPUT_FILENAME, index=False)

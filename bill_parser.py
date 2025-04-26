@@ -41,28 +41,17 @@ class BillParserA(BillParser):
             page_type = None
 
             if re.findall("due by", current_pagetext, re.IGNORECASE):
-                print(f"Summary page found on page {i}")
                 page_type = "summary"
 
             elif re.findall("trans", current_pagetext, re.IGNORECASE) and re.findall(
                 "\\$", current_pagetext, re.IGNORECASE
             ):
-                print(f"Transactions page found on page {i}")
                 page_type = "transactions"
 
             else:
-                print(f"Other page found on page {i}")
                 page_type = "other"
 
             if page_type == "transactions":
-                print(
-                    re.findall(
-                        "(Reward\nEarned\n.*New Balance – [^\n]*\n)",
-                        current_pagetext,
-                        re.DOTALL,
-                    )[0]
-                )
-
                 raw_table_text = re.findall(
                     "(Reward\nEarned\n.*New Balance – [^\n]*\n)",
                     current_pagetext,
@@ -94,27 +83,24 @@ class BillParserA(BillParser):
                         if re.match(pattern, line):
                             mode = "posted_date"
                         else:
-                            print(f"mode: '{mode}', line: '{line}'")
                             description += " "
                             description += line
 
                     # Extract values from the lines
                     match mode:
                         case "reward":
-                            print(f"mode: '{mode}', line: '{line}'")
                             mode = "amount"
                         case "amount":
                             amount = line.replace("$", "").replace(",", "")
-                            print(f"mode: '{mode}', line: '{line}'")
+
                             mode = "description"
                             description = ""
                         case "posted_date":
-                            print(f"mode: '{mode}', line: '{line}'")
                             mode = "transaction_date"
                         case "transaction_date":
                             transaction_date = line
                             # Wrap up and iterate to new row
-                            print(f"mode: '{mode}', line: '{line}'")
+
                             mode = "reward"
 
                             transaction_date = datetime.strptime(
@@ -143,26 +129,15 @@ class BillParserB(BillParser):
             page_type = None
 
             if re.findall("Balance from your last statement", current_pagetext):
-                print(f"Summary page found on page {i}")
                 page_type = "summary"
 
             elif re.findall("TRANSACTION DESCRIPTION", current_pagetext):
-                print(f"Transactions page found on page {i}")
                 page_type = "transactions"
 
             else:
-                print(f"Other page found on page {i}")
                 page_type = "other"
 
             if page_type == "transactions":
-                print(
-                    re.findall(
-                        r"(TRANSACTION\nDATE\n.*?\.\d\d\n) ?Total",
-                        current_pagetext,
-                        re.DOTALL,
-                    )[0]
-                )
-
                 raw_table_texts = re.findall(
                     r"(TRANSACTION\nDATE\n.*?\.\d\d\n) ?Total",
                     current_pagetext,
@@ -190,17 +165,14 @@ class BillParserB(BillParser):
                             if re.match(r".*\.\d\d$", line):
                                 mode = "amount"
                             else:
-                                print(f"mode: '{mode}', line: '{line}'")
                                 description += line
 
                         # Extract values from the lines
                         match mode:
                             case "transaction_date":
                                 transaction_date = line
-                                print(f"mode: '{mode}', line: '{line}'")
                                 mode = "posting_date"
                             case "posting_date":
-                                print(f"mode: '{mode}', line: '{line}'")
                                 mode = "transaction_description"
 
                                 # Occassionally, the description starts on this line
@@ -210,7 +182,6 @@ class BillParserB(BillParser):
                                     description = ""
                             case "amount":
                                 amount = line.replace(",", "")
-                                print(f"mode: '{mode}', line: '{line}'")
                                 mode = "transaction_date"
 
                                 # Wrap up and iterate to new row
