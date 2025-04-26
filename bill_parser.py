@@ -121,6 +121,95 @@ class BillParserA(BillParser):
                                 transaction_date, "%d-%b-%Y"
                             ).strftime("%Y-%m-%d")
 
-                            output += f"{self.account_name},{self.file_name},{transaction_date},{description.strip()},${amount}\n"
+                            output += f"{self.account_name},{self.file_name},{transaction_date},{description.strip()},{amount}\n"
+
+        return output
+
+
+class BillParserB(BillParser):
+    def get_csv(self):
+        output = "account_name,file_name,transaction_date,description,amount\n"
+
+        for i, current_pagetext in enumerate(self.pagetexts, start=1):
+            page_type = None
+
+            if re.findall("Balance from your last statement", current_pagetext):
+                print(f"Summary page found on page {i}")
+                page_type = "summary"
+
+            elif re.findall("TRANSACTION DESCRIPTION", current_pagetext):
+                print(f"Transactions page found on page {i}")
+                page_type = "transactions"
+
+            else:
+                print(f"Other page found on page {i}")
+                page_type = "other"
+
+            if page_type == "transactions":
+                print(
+                    re.findall(
+                        r"(TRANSACTION\nDATE\n.*?\.\d\d\n) ?Total",
+                        current_pagetext,
+                        re.DOTALL,
+                    )[0]
+                )
+
+                raw_table_texts = re.findall(
+                    r"(TRANSACTION\nDATE\n.*?\.\d\d\n) ?Total",
+                    current_pagetext,
+                    re.DOTALL,
+                )
+
+                for raw_table_text in raw_table_texts:
+                    # Split the input text into lines and remove empty lines
+                    lines = [line for line in raw_table_text.strip().split("\n")]
+
+                    # Process lines in groups of 7 (each transaction spans multiple lines)
+                    i = 6  # Skip the header lines
+                    lines = lines[6:]
+                    mode = "transaction_date"
+                    transaction_date = ""
+                    description = ""
+                    amount = ""
+                    for line in lines:
+                        # Skip title line that is sometimes present
+                        if re.match(r"^Purchases - Card #", line):
+                            continue
+
+                        # Special pre-handling for description since it can be multi-line
+                        if mode == "transaction_description":
+                            if re.match(r".*\.\d\d$", line):
+                                mode = "amount"
+                            else:
+                                print(f"mode: '{mode}', line: '{line}'")
+                                description += line
+
+                        # Extract values from the lines
+                        match mode:
+                            case "transaction_date":
+                                # TODO: Need to infer year from the statement date - forcing to 2024 for now
+                                transaction_date = f"{line} 2024"
+                                print(f"mode: '{mode}', line: '{line}'")
+                                mode = "posting_date"
+                            case "posting_date":
+                                print(f"mode: '{mode}', line: '{line}'")
+                                mode = "transaction_description"
+
+                                # Occassionally, the description starts on this line
+                                if len(line) != 6:
+                                    description = line[6:]
+                                else:
+                                    description = ""
+                            case "amount":
+                                amount = line.replace(",", "")
+                                print(f"mode: '{mode}', line: '{line}'")
+                                mode = "transaction_date"
+
+                                # Wrap up and iterate to new row
+                                transaction_date = datetime.strptime(
+                                    transaction_date, "%b %d %Y"
+                                ).strftime("%Y-%m-%d")
+
+                                output += f"{self.account_name},{self.file_name},{transaction_date},{description.strip()},{amount}\n"
 
         return output
