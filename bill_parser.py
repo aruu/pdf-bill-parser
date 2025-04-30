@@ -102,7 +102,7 @@ class BillParserA(BillParser):
 
         # Select the standard output columns
         output = transactions[
-            ["account_name", "file_name", "transaction_date", "description", "amount"]
+            ["transaction_date", "description", "amount", "account_name", "file_name"]
         ].to_csv(index=False)
         return output
 
@@ -140,7 +140,7 @@ class BillParserB(BillParser):
         # Extract the statement date to resolve the year of the transaction date
         statement_date = self.extract_statement_date()
 
-        output = "account_name,file_name,transaction_date,description,amount\n"
+        output = "transaction_date,description,amount,account_name,file_name\n"
 
         for i, current_pagetext in enumerate(self.pagetexts, start=1):
             page_type = None
@@ -227,6 +227,6 @@ class BillParserB(BillParser):
                                     transaction_date_day,
                                 ).strftime("%Y-%m-%d")
 
-                                output += f"{self.account_name},{self.file_name},{transaction_date},{description.strip()},{amount}\n"
+                                output += f"{transaction_date},{description.strip()},{amount},{self.account_name},{self.file_name}\n"
 
         return output
