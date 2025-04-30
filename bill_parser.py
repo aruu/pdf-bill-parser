@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import re
+import pandas as pd
 from datetime import datetime, date
 
 
@@ -35,79 +36,95 @@ class DummyBillParser(BillParser):
 
 
 class BillParserA(BillParser):
+    def parse_lines(self, lines):
+        transactions = []
+        initial_state = "reward_earned"
+
+        buffer = {}
+        state = initial_state
+
+        # Skip the header lines
+        lines = lines[9:]
+
+        # State machine like processing
+        while lines:
+            match state:
+                case "reward_earned":
+                    buffer["reward_earned"] = lines.pop(0)
+                    state = "amount"
+                case "amount":
+                    buffer["amount"] = lines.pop(0)
+                    state = "category"
+                case "category":
+                    # Special handling since it can include "–" to represent Uncategorized
+                    # Otherwise this is actually the start of the description so don't consume the line
+                    if lines[0] != "–":
+                        buffer["category"] = ""
+                    else:
+                        buffer["category"] = lines.pop(0)
+                    state = "description"
+                case "description":
+                    # The description can be multi-line so we're not actually sure when it ends, until we reach the posted_date
+                    if re.match(r"\d{2}-\D{3}-\d{4}", lines[0]):
+                        state = "posted_date"
+                        continue
+                    if buffer.get("description"):
+                        buffer["description"] += " " + lines.pop(0)
+                    else:
+                        buffer["description"] = lines.pop(0)
+                case "posted_date":
+                    buffer["posted_date"] = lines.pop(0)
+                    state = "transaction_date"
+                case "transaction_date":
+                    buffer["transaction_date"] = lines.pop(0)
+                    state = "end_of_row"
+                case "end_of_row":
+                    transactions.append(buffer.copy())
+                    buffer = {}
+                    state = initial_state
+
+        return pd.DataFrame(transactions)
+
+    def tabletext_to_csv(self, tabletext):
+        # Split the input text into lines - these can be treated as input into a state machine
+        lines = tabletext.splitlines()
+        transactions = self.parse_lines(lines)
+
+        # Compile the transactions into the standard format
+        transactions["account_name"] = self.account_name
+        transactions["file_name"] = self.file_name
+        transactions["transaction_date"] = pd.to_datetime(
+            transactions["transaction_date"], format="%d-%b-%Y"
+        ).dt.strftime("%Y-%m-%d")
+        transactions["amount"] = (
+            transactions["amount"].str.replace("$", "").str.replace(",", "")
+        )
+
+        # Select the standard output columns
+        output = transactions[
+            ["account_name", "file_name", "transaction_date", "description", "amount"]
+        ].to_csv(index=False)
+        return output
+
     def get_csv(self):
         # Iterate through pages
-        for i, current_pagetext in enumerate(self.pagetexts, start=1):
-            page_type = None
-
-            if re.findall("due by", current_pagetext, re.IGNORECASE):
+        for i, pagetext in enumerate(self.pagetexts, start=1):
+            if re.findall("due by", pagetext, re.IGNORECASE):
                 page_type = "summary"
 
-            elif re.findall("trans", current_pagetext, re.IGNORECASE) and re.findall(
-                "\\$", current_pagetext, re.IGNORECASE
+            elif re.findall(
+                "(Reward\nEarned\n.*)New Balance – [^\n]*\n", pagetext, re.DOTALL
             ):
                 page_type = "transactions"
+                tabletext = re.findall(
+                    "(Reward\nEarned\n.*)New Balance – [^\n]*\n",
+                    pagetext,
+                    re.DOTALL,
+                )[0]
+                output = self.tabletext_to_csv(tabletext)
 
             else:
                 page_type = "other"
-
-            if page_type == "transactions":
-                raw_table_text = re.findall(
-                    "(Reward\nEarned\n.*New Balance – [^\n]*\n)",
-                    current_pagetext,
-                    re.DOTALL,
-                )[0]
-
-                output = "account_name,file_name,transaction_date,description,amount\n"
-
-                # Split the input text into lines and remove empty lines
-                lines = [line for line in raw_table_text.split("\n")]
-
-                # Initialize list to store transactions
-                output_lines = []
-
-                # Process lines in groups of 7 (each transaction spans multiple lines)
-                i = 9  # Skip the header lines
-                lines = lines[9:]
-                mode = "reward"
-                transaction_date = ""
-                description = ""
-                amount = ""
-                for line in lines:
-                    # Special pre-handling for description since it can be multi-line or include "–" to represent Uncategorized
-                    if mode == "description":
-                        if line == "–":
-                            continue
-
-                        pattern = r"\d{2}-\D{3}-\d{4}"
-                        if re.match(pattern, line):
-                            mode = "posted_date"
-                        else:
-                            description += " "
-                            description += line
-
-                    # Extract values from the lines
-                    match mode:
-                        case "reward":
-                            mode = "amount"
-                        case "amount":
-                            amount = line.replace("$", "").replace(",", "")
-
-                            mode = "description"
-                            description = ""
-                        case "posted_date":
-                            mode = "transaction_date"
-                        case "transaction_date":
-                            transaction_date = line
-                            # Wrap up and iterate to new row
-
-                            mode = "reward"
-
-                            transaction_date = datetime.strptime(
-                                transaction_date, "%d-%b-%Y"
-                            ).strftime("%Y-%m-%d")
-
-                            output += f"{self.account_name},{self.file_name},{transaction_date},{description.strip()},{amount}\n"
 
         return output
 
