@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pymupdf
 
 from bill_parser import BillParserA, BillParserB
 
@@ -22,6 +23,11 @@ if __name__ == "__main__":
         for bill_path in account_path.iterdir():
             print(bill_path)
 
+            # Open the PDF and extract the text from each page
+            doc = pymupdf.open(bill_path)
+            pagetexts = [page.get_text() for page in doc]
+            doc.close()
+
             # Parse the pagetexts into CSV format
             if "ge" in account_path.name:
                 parser_class = BillParserA
@@ -31,9 +37,9 @@ if __name__ == "__main__":
             bill_parser = parser_class(
                 account_path.name,
                 bill_path.name,
-                bill_path,
+                pagetexts,
             )
-            csvtext = bill_parser.get_csv()
+            csvtext = bill_parser.get_csv_text()
 
             # Save the CSV in the output folder
             output_csv_path_parts = list(bill_path.parts)
