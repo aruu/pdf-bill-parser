@@ -1,41 +1,13 @@
 # %%
 from pathlib import Path
+
 import pandas as pd
-from bill_parser import DummyBillParser, BillParserA, BillParserB
-import pymupdf
+
+from bill_parser import BillParserA, BillParserB
 
 DATA_DIR = "data"
 OUTPUT_DIR = "output"
 FINAL_OUTPUT_FILENAME = "final_output.csv"
-
-
-def extract_pagetexts(pdf_path: str) -> list[str]:
-    """
-    Extract text for each page in a PDF file using PyMuPDF.
-
-    Args:
-        pdf_path (str): Path to the PDF file
-
-    Returns:
-        list[str]: List of strings, each representing the text of a page
-    """
-
-    try:
-        # Open the PDF file
-        doc = pymupdf.open(pdf_path)
-
-        # Initialize an array to store the results
-        pagetexts = [page.get_text() for page in doc]
-
-        # Close the document
-        doc.close()
-
-        return pagetexts
-
-    except FileNotFoundError:
-        return "Error: PDF file not found"
-    except Exception as e:
-        return f"Error occurred: {str(e)}"
 
 
 # %%
@@ -50,20 +22,18 @@ if __name__ == "__main__":
         for bill_path in account_path.iterdir():
             print(bill_path)
 
-            # Extract the text by page
-            pagetexts = extract_pagetexts(bill_path)
-
             # Parse the pagetexts into CSV format
             if "ge" in account_path.name:
                 parser_class = BillParserA
             else:
                 parser_class = BillParserB
 
-            csvtext = parser_class(
+            bill_parser = parser_class(
                 account_path.name,
                 bill_path.name,
-                pagetexts,
-            ).get_csv()
+                bill_path,
+            )
+            csvtext = bill_parser.get_csv()
 
             # Save the CSV in the output folder
             output_csv_path_parts = list(bill_path.parts)

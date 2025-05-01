@@ -1,7 +1,9 @@
-from abc import ABC, abstractmethod
 import re
+from abc import ABC, abstractmethod
+from datetime import date, datetime
+
 import pandas as pd
-from datetime import datetime, date
+import pymupdf
 
 
 class BillParser(ABC):
@@ -16,10 +18,33 @@ class BillParser(ABC):
         csvtext = BillParser(account_name, file_name, pagetexts).get_csv()
     """
 
-    def __init__(self, account_name, file_name, pagetexts):
+    def __init__(self, account_name, file_name, file_path):
         self.account_name = account_name
         self.file_name = file_name
-        self.pagetexts = pagetexts
+        self.file_path = file_path
+        self.pagetexts = self._extract(self.file_path)
+
+    def _extract(self, file_path: str) -> list[str]:
+        """
+        Extract text for each page in the PDF specified by file_path and return it as a list of strings.
+
+        Args:
+            pdf_path (str): Path to the PDF file
+
+        Returns:
+            list[str]: List of strings, each representing the text of a page
+        """
+
+        # Open the PDF file
+        doc = pymupdf.open(file_path)
+
+        # Initialize an array to store the results
+        pagetexts = [page.get_text() for page in doc]
+
+        # Close the document
+        doc.close()
+
+        return pagetexts
 
     @abstractmethod
     def get_csv(self):
@@ -116,6 +141,7 @@ class BillParserA(BillParser):
                 "(Reward\nEarned\n.*)New Balance – [^\n]*\n", pagetext, re.DOTALL
             ):
                 page_type = "transactions"
+                # TODO: Don't include last two lines for this
                 tabletext = re.findall(
                     "(Reward\nEarned\n.*)New Balance – [^\n]*\n",
                     pagetext,
