@@ -54,17 +54,19 @@ class BillParser(ABC):
         pass
 
     @abstractmethod
-    def get_csv_text(self):
+    def _pre_process_transactions(self, transactions: pd.DataFrame) -> pd.DataFrame:
         pass
 
-
-class DummyBillParser(BillParser):
     def get_csv_text(self):
-        return (
-            "account_name,file_name,transaction_date,description,amount\n"
-            f"{self.account_name},{self.file_name},2023-01-01,desc,3\n"
-            f"{self.account_name},{self.file_name},2024-01-01,desc,5\n"
-        )
+        transactions = self._pre_process_transactions(self.transactions)
+        transactions["account_name"] = self.account_name
+        transactions["file_name"] = self.file_name
+
+        # Select the standard output columns
+        csv_text = transactions[
+            ["transaction_date", "description", "amount", "account_name", "file_name"]
+        ].to_csv(index=False)
+        return csv_text
 
 
 class BillParserA(BillParser):
@@ -152,24 +154,14 @@ class BillParserA(BillParser):
 
         return pd.DataFrame(transactions)
 
-    def get_csv_text(self):
-        transactions = self.transactions
-
-        # Compile the transactions into the standard format
-        transactions["account_name"] = self.account_name
-        transactions["file_name"] = self.file_name
+    def _pre_process_transactions(self, transactions: pd.DataFrame) -> pd.DataFrame:
         transactions["transaction_date"] = pd.to_datetime(
             transactions["transaction_date"], format="%d-%b-%Y"
         ).dt.strftime("%Y-%m-%d")
         transactions["amount"] = (
             transactions["amount"].str.replace("$", "").str.replace(",", "")
         )
-
-        # Select the standard output columns
-        csv_text = transactions[
-            ["transaction_date", "description", "amount", "account_name", "file_name"]
-        ].to_csv(index=False)
-        return csv_text
+        return transactions
 
 
 class BillParserB(BillParser):
@@ -266,12 +258,7 @@ class BillParserB(BillParser):
 
         return pd.DataFrame(transactions)
 
-    def get_csv_text(self):
-        transactions = self.transactions
-
-        # Compile the transactions into the standard format
-        transactions["account_name"] = self.account_name
-        transactions["file_name"] = self.file_name
+    def _pre_process_transactions(self, transactions: pd.DataFrame) -> pd.DataFrame:
         transactions["description"] = transactions["transaction_description"]
         transactions["amount"] = transactions["amount"].str.replace(",", "")
 
@@ -282,17 +269,11 @@ class BillParserB(BillParser):
                 transactions["transaction_date"].apply(lambda x: "Dec" in x),
                 "transaction_date_year",
             ] -= 1
-        transactions["transaction_date"] = (
+
+        transactions["transaction_date"] = pd.to_datetime(
             transactions["transaction_date"]
             + " "
-            + transactions["transaction_date_year"].astype(str)
+            + transactions["transaction_date_year"].astype(str),
+            format="%b %d %Y",
         )
-        transactions["transaction_date"] = pd.to_datetime(
-            transactions["transaction_date"], format="%b %d %Y"
-        )
-
-        # Select the standard output columns
-        csv_text = transactions[
-            ["transaction_date", "description", "amount", "account_name", "file_name"]
-        ].to_csv(index=False)
-        return csv_text
+        return transactions
