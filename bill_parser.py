@@ -277,3 +277,120 @@ class BillParserB(BillParser):
             format="%b %d %Y",
         )
         return transactions
+
+
+class BillParserC(BillParser):
+    def __init__(self, account_name, file_name, pagetexts):
+        super().__init__(account_name, file_name, pagetexts)
+
+        # Extract the statement date to resolve the year of the transaction date
+        statement_date_line = re.findall(
+            "Statement date\n(.*)\n", self.classified_pagetexts["summary"][0]
+        )[0]
+        self.statement_date = datetime.strptime(statement_date_line, "%b. %d, %Y")
+
+    def _classify_pages(self, pagetexts: list[str]) -> dict[str, list[str]]:
+        classified_pagetexts = {}
+
+        # Iterate through pages
+        for pagetext in pagetexts:
+            if re.findall("Summary of your account", pagetext):
+                page_type = "summary"
+            elif re.findall("Transactions since your last statement", pagetext):
+                page_type = "transactions"
+            else:
+                page_type = "other"
+
+            if page_type not in classified_pagetexts:
+                classified_pagetexts[page_type] = [pagetext]
+            else:
+                classified_pagetexts[page_type].append(pagetext)
+
+        return classified_pagetexts
+
+    def _tabletext_extractor(self, pagetext: str) -> list[str]:
+        tabletexts = re.findall(
+            r"(TRANS\nDATE\n(?s:.)*)(?:\(continued on next page\)|Subtotal for )",
+            pagetext,
+        )
+
+        return tabletexts
+
+    def _parse_transaction_table(self, tabletext: str) -> pd.DataFrame:
+        # Split the input text into lines - these can be treated as input into a state machine
+        lines = tabletext.splitlines()
+
+        transactions = []
+        initial_state = "transaction_date"
+
+        buffer = {}
+        state = initial_state
+
+        # Skip the header lines
+        lines = lines[6:]
+
+        # Sometimes there is an additional header line that we need to skip
+        if re.match(r"^Card number: XXXX XXXX XXXX", lines[0]):
+            lines.pop(0)
+
+        # State machine like processing
+        while lines:
+            match state:
+                case "transaction_date":
+                    line = lines.pop(0)
+                    parts = line.split()
+                    # The posting date could be on the same line - if so, push it back onto the stack
+                    if len(parts) == 4:
+                        lines.insert(0, parts[2] + " " + parts[3])
+                    buffer["transaction_date"] = parts[0] + " " + parts[1]
+                    state = "posting_date"
+                case "posting_date":
+                    line = lines.pop(0)
+                    parts = line.split()
+                    buffer["posting_date"] = parts[0] + " " + parts[1]
+                    state = "description"
+                case "description":
+                    # The description can be multi-line so we're not actually sure when it ends, until we reach the amount
+                    if re.match(r"^[\d,]*\.\d\d (\xa0CR)?$", lines[0]):
+                        state = "amount"
+                        continue
+                    # There seems to be a variable amount of spaces in the description - clean it up
+                    if "description" not in buffer:
+                        buffer["description"] = " ".join(lines.pop(0).split())
+                    else:
+                        buffer["description"] += " " + " ".join(lines.pop(0).split())
+                case "amount":
+                    buffer["amount"] = lines.pop(0).strip()
+                    state = self.END_OF_ROW
+                    # Need a placeholder token to process the end of the row
+                    lines.insert(0, self.END_OF_ROW_TOKEN)
+                case self.END_OF_ROW:
+                    transactions.append(buffer.copy())
+                    buffer = {}
+                    state = initial_state
+                    lines.pop(0)
+
+        return pd.DataFrame(transactions)
+
+    def _pre_process_transactions(self, transactions: pd.DataFrame) -> pd.DataFrame:
+        transactions["amount"] = (
+            transactions["amount"]
+            .str.replace(",", "")
+            .apply(lambda x: "-" + x.replace(" \xa0CR", "") if " \xa0CR" in x else x)
+        )
+
+        # Determine the year from the statement date
+        transactions["transaction_date_year"] = self.statement_date.year
+        if self.statement_date.month == 1:
+            transactions.loc[
+                transactions["transaction_date"].apply(lambda x: "Dec." in x),
+                "transaction_date_year",
+            ] -= 1
+
+        transactions["transaction_date"] = pd.to_datetime(
+            transactions["transaction_date"]
+            + ", "
+            + transactions["transaction_date_year"].astype(str),
+            format="%b. %d, %Y",
+        )
+        return transactions

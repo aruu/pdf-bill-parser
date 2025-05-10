@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pymupdf
 
-from bill_parser import BillParserA, BillParserB
+from bill_parser import BillParserA, BillParserB, BillParserC
 
 DATA_DIR = "data"
 OUTPUT_DIR = "output"
@@ -31,6 +31,8 @@ if __name__ == "__main__":
             # Parse the pagetexts into CSV format
             if "ge" in account_path.name:
                 parser_class = BillParserA
+            elif "B" in account_path.name:
+                parser_class = BillParserC
             else:
                 parser_class = BillParserB
 
