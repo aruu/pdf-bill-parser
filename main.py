@@ -1,11 +1,20 @@
 # %%
+import re
 from pathlib import Path
 
 import pandas as pd
 import pymupdf
+import yaml
 
 from bill_parser import BillParserA, BillParserB, BillParserC
 
+PARSER_MAPPING = {
+    "BillParserA": BillParserA,
+    "BillParserB": BillParserB,
+    "BillParserC": BillParserC,
+}
+
+CONFIG_YAML_FILENAME = "config.yaml"
 DATA_DIR = "data"
 OUTPUT_DIR = "output"
 FINAL_OUTPUT_FILENAME = "final_output.csv"
@@ -16,10 +25,22 @@ if __name__ == "__main__":
     root_data_path = Path(DATA_DIR)
     root_output_path = Path(OUTPUT_DIR)
 
-    # TODO: Create and parse YAML config file specifying which folder patterns to use with which Parser classes
+    # Parse YAML config file. This specifies:
+    # - which folder name patterns to use with which Parser classes
+    # - which transaction description patterns to assign to which categories
+    with open(CONFIG_YAML_FILENAME, "r") as f:
+        config = yaml.safe_load(f)
+        account_mapping = config["account_mapping"]
 
     # First, iterate through all accounts and bills and output a TSV per bill
     for account_path in root_data_path.iterdir():
+        # Determine the BillParser class to use based on the account name
+        for mapping in account_mapping:
+            # Use the first pattern that matches
+            if re.search(mapping["pattern"], account_path.name):
+                parser = PARSER_MAPPING[mapping["parser"]]
+                break
+
         for bill_path in account_path.iterdir():
             print(bill_path)
 
@@ -29,14 +50,7 @@ if __name__ == "__main__":
             doc.close()
 
             # Parse the pagetexts into CSV format
-            if "ge" in account_path.name:
-                parser_class = BillParserA
-            elif "B" in account_path.name:
-                parser_class = BillParserC
-            else:
-                parser_class = BillParserB
-
-            bill_parser = parser_class(
+            bill_parser = parser(
                 account_path.name,
                 bill_path.name,
                 pagetexts,

@@ -1,0 +1,3 @@
+account_mapping:
+  - pattern: "^Account Name 1"
+    parser: BillParserA
