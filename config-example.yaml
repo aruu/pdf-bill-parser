@@ -1,3 +1,9 @@
 account_mapping:
   - pattern: "^Account Name 1"
     parser: BillParserA
+
+description_mapping:
+  - pattern: "TAXES"
+    category: "Taxes"
+  - pattern: "Grocery store"
+    category: "Groceries"

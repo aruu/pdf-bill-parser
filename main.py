@@ -18,6 +18,7 @@ CONFIG_YAML_FILENAME = "config.yaml"
 DATA_DIR = "data"
 OUTPUT_DIR = "output"
 FINAL_OUTPUT_FILENAME = "final_output.csv"
+FINAL_CATEGORIZED_FILENAME = "final_categorized.csv"
 
 
 # %%
@@ -30,7 +31,9 @@ if __name__ == "__main__":
     # - which transaction description patterns to assign to which categories
     with open(CONFIG_YAML_FILENAME, "r") as f:
         config = yaml.safe_load(f)
-        account_mapping = config["account_mapping"]
+
+    account_mapping = config["account_mapping"]
+    description_mapping = config["description_mapping"]
 
     # First, iterate through all accounts and bills and output a TSV per bill
     for account_path in root_data_path.iterdir():
@@ -82,14 +85,48 @@ if __name__ == "__main__":
         df_combined = df_combined.sort_values(by="transaction_date", kind="stable")
         df_combined.to_csv(output_account_path.with_suffix(".csv"), index=False)
 
-    # Finally, combine all account CSVs into an overall CSV
+    # Combine all account CSVs into an overall CSV
     # stable sort in chronological order based on transaction_date
     list_input_dfs = []
     for account_csv_path in root_output_path.glob("*.csv"):
-        if account_csv_path.name == FINAL_OUTPUT_FILENAME:
+        if account_csv_path.name in [FINAL_OUTPUT_FILENAME, FINAL_CATEGORIZED_FILENAME]:
             continue
         print(account_csv_path)
         list_input_dfs.append(pd.read_csv(account_csv_path, dtype=str))
     df_combined = pd.concat(list_input_dfs)
     df_combined = df_combined.sort_values(by="transaction_date", kind="stable")
     df_combined.to_csv(root_output_path / FINAL_OUTPUT_FILENAME, index=False)
+
+    # Finally, categorize the transactions based on the description patterns
+    df_final = pd.read_csv(root_output_path / FINAL_OUTPUT_FILENAME, dtype=str)
+    df_final_categorized = df_final.copy()
+    df_final_categorized["category"] = None
+
+    # Map according to patterns specified in the YAML config
+    for mapping in description_mapping:
+        df_final_categorized.loc[
+            df_final_categorized["category"].isna()
+            & df_final_categorized["description"].str.contains(mapping["pattern"]),
+            "category",
+        ] = mapping["category"]
+
+    # If still uncategorized, assign "Uncategorized"
+    df_final_categorized.loc[
+        df_final_categorized["category"].isna(),
+        "category",
+    ] = "Uncategorized"
+
+    # Select the output columns and save to CSV
+    df_final_categorized = df_final_categorized[
+        [
+            "transaction_date",
+            "category",
+            "description",
+            "amount",
+            "account_name",
+            "file_name",
+        ]
+    ]
+    df_final_categorized.to_csv(
+        root_output_path / FINAL_CATEGORIZED_FILENAME, index=False
+    )
