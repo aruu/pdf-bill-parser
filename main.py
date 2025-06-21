@@ -104,11 +104,12 @@ if __name__ == "__main__":
 
     # Map according to patterns specified in the YAML config
     for mapping in description_mapping:
-        df_final_categorized.loc[
-            df_final_categorized["category"].isna()
-            & df_final_categorized["description"].str.contains(mapping["pattern"]),
-            "category",
-        ] = mapping["category"]
+        for pattern in mapping["patterns"]:
+            df_final_categorized.loc[
+                df_final_categorized["category"].isna()
+                & df_final_categorized["description"].str.contains(pattern),
+                "category",
+            ] = mapping["category"]
 
     # If still uncategorized, assign "Uncategorized"
     df_final_categorized.loc[

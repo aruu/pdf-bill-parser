@@ -3,7 +3,12 @@ account_mapping:
     parser: BillParserA
 
 description_mapping:
-  - pattern: "TAXES"
-    category: "Taxes"
-  - pattern: "Grocery store"
-    category: "Groceries"
+  - category: "Taxes"
+    patterns:
+      - "^TAX"
+      - "TAXES"
+      - "Property Tax"
+  - category: "Groceries"
+    patterns:
+      - "grocery store"
+      - "market"
