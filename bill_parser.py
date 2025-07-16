@@ -94,7 +94,7 @@ class BillParserA(BillParser):
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         # "New Balance – .*\n" indicates the end of this sequence, but we want to exclude that summary row
         tabletexts = re.findall(
-            "(Reward\nEarned\n(?s:.)*\n).*\n.*\nNew Balance – .*\n", pagetext
+            "(Reward\nEarned\n(?s:.)*\n)New Balance – .*\n", pagetext
         )
 
         return tabletexts
@@ -111,6 +111,10 @@ class BillParserA(BillParser):
 
         # Skip the header lines
         lines = lines[9:]
+
+        # Sometimes there are additional header lines that we need to skip
+        if re.match(r"^Interest rates$", lines[0]):
+            lines = lines[17:]
 
         # State machine like processing
         while lines:
