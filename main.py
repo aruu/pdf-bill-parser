@@ -6,12 +6,13 @@ import pandas as pd
 import pymupdf
 import yaml
 
-from bill_parser import BillParserA, BillParserB, BillParserC
+from bill_parser import BillParserA, BillParserB, BillParserC, BillParserD
 
 PARSER_MAPPING = {
     "BillParserA": BillParserA,
     "BillParserB": BillParserB,
     "BillParserC": BillParserC,
+    "BillParserD": BillParserD,
 }
 
 CONFIG_YAML_FILENAME = "config.yaml"

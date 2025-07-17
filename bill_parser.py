@@ -398,3 +398,132 @@ class BillParserC(BillParser):
             format="%b. %d, %Y",
         )
         return transactions
+
+
+class BillParserD(BillParser):
+    def __init__(self, account_name, file_name, pagetexts):
+        super().__init__(account_name, file_name, pagetexts)
+
+        # Extract the statement date to resolve the year of the transaction date
+        statement_date_line = self.classified_pagetexts["transactions"][0].split("\n")[
+            1
+        ]
+        statement_date = statement_date_line.split("to ")[1]
+        self.statement_date = datetime.strptime(statement_date, "%B %d, %Y")
+
+    def _classify_pages(self, pagetexts: list[str]) -> dict[str, list[str]]:
+        classified_pagetexts = {}
+
+        # Iterate through pages
+        for pagetext in pagetexts:
+            if re.findall("Your account at a glance", pagetext):
+                page_type = "summary"
+            elif re.findall("Transactions from", pagetext):
+                page_type = "transactions"
+            else:
+                page_type = "other"
+
+            if page_type not in classified_pagetexts:
+                classified_pagetexts[page_type] = [pagetext]
+            else:
+                classified_pagetexts[page_type].append(pagetext)
+
+        return classified_pagetexts
+
+    def _tabletext_extractor(self, pagetext: str) -> list[str]:
+        tabletexts = re.findall(
+            r"(Trans\ndate\n.*?\.\d\d\n)Total",
+            pagetext,
+            re.DOTALL,
+        )
+
+        return tabletexts
+
+    def _parse_transaction_table(self, tabletext: str) -> pd.DataFrame:
+        mode = "payments"
+
+        # Split the input text into lines - these can be treated as input into a state machine
+        lines = tabletext.splitlines()
+
+        transactions = []
+        initial_state = "transaction_date"
+
+        buffer = {}
+        state = initial_state
+
+        # Skip the header lines
+        lines = lines[5:]
+        # Sometimes there is an additional header line
+        # This indicates we are parsing a charges and credits table
+        if lines[0] == "Spend Categories":
+            mode = "charges_and_credits"
+            lines = lines[3:]
+        else:
+            lines.pop(0)
+
+        # State machine like processing
+        while lines:
+            match state:
+                case "transaction_date":
+                    buffer["transaction_date"] = lines.pop(0)
+                    state = "posting_date"
+                case "posting_date":
+                    line = lines.pop(0)
+                    buffer["posting_date"] = line[0:6]
+
+                    # Occassionally, the description starts on this line
+                    remaining_line = line[6:]
+                    if remaining_line:
+                        # Remove the first character since it is a space after the date
+                        lines.insert(0, remaining_line[1:])
+
+                    state = "transaction_description"
+                case "transaction_description":
+                    # There seems to be a variable amount of spaces in the description - clean it up
+                    description = " ".join(lines.pop(0).split())
+                    # It can sometime start with "Ý ", so we need to remove this
+                    if description.startswith("Ý "):
+                        description = description[2:]
+                    buffer["transaction_description"] = description
+                    if mode == "payments":
+                        state = "amount"
+                    else:
+                        state = "category"
+                case "category":
+                    buffer["category"] = lines.pop(0)
+                    state = "amount"
+                case "amount":
+                    if mode == "payments":
+                        buffer["amount"] = "-" + lines.pop(0)
+                    else:
+                        buffer["amount"] = lines.pop(0)
+                    state = self.END_OF_ROW
+                    # Need a placeholder token to process the end of the row
+                    lines.insert(0, self.END_OF_ROW_TOKEN)
+                case self.END_OF_ROW:
+                    transactions.append(buffer.copy())
+                    buffer = {}
+                    state = initial_state
+                    lines.pop(0)
+
+        return pd.DataFrame(transactions)
+
+    def _pre_process_transactions(self, transactions: pd.DataFrame) -> pd.DataFrame:
+        transactions["description"] = transactions["transaction_description"]
+        transactions["amount"] = transactions["amount"].str.replace(",", "")
+
+        # Determine the year from the statement date
+        transactions["transaction_date_year"] = self.statement_date.year
+        if self.statement_date.month == 1:
+            transactions.loc[
+                transactions["transaction_date"].apply(lambda x: "Dec" in x),
+                "transaction_date_year",
+            ] -= 1
+
+        transactions["transaction_date"] = pd.to_datetime(
+            transactions["transaction_date"]
+            + " "
+            + transactions["transaction_date_year"].astype(str),
+            format="%b %d %Y",
+        )
+        return transactions
