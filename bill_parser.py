@@ -1,5 +1,6 @@
 import re
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from datetime import datetime
 
 import pandas as pd
@@ -17,10 +18,16 @@ class BillParser(ABC):
         csvtext = BillParser(account_name, file_name, pagetexts).get_csv()
     """
 
-    def __init__(self, account_name, file_name, pagetexts):
-        self.END_OF_ROW = "end_of_row"
-        self.END_OF_ROW_TOKEN = "EOR"
+    # Constants for page types
+    PAGE_TYPE_SUMMARY = "summary"
+    PAGE_TYPE_TRANSACTIONS = "transactions"
+    PAGE_TYPE_OTHER = "other"
 
+    # Constants for transaction table processing
+    END_OF_ROW = "end_of_row"
+    END_OF_ROW_TOKEN = "EOR"
+
+    def __init__(self, account_name, file_name, pagetexts):
         self.account_name = account_name
         self.file_name = file_name
         self.pagetexts = pagetexts
@@ -29,9 +36,41 @@ class BillParser(ABC):
             self.classified_pagetexts["transactions"]
         )
 
+    @property
     @abstractmethod
-    def _classify_pages(self, pagetexts: list[str]) -> dict[str, list[str]]:
+    def page_type_regexes(self) -> dict[str, str]:
+        """Returns a dictionary of regex patterns for classifying pages.
+        The keys are the regex patterns used for classification, and the values
+        are the page types (e.g., 'summary', 'transactions', 'other').
+        """
         pass
+
+    def _classify_pages(self, pagetexts: list[str]) -> dict[str, list[str]]:
+        """Classify pages based on the provided regex patterns.
+        This method iterates through the pagetexts and classifies each page
+        into 'summary', 'transactions', or 'other' based on the regex patterns
+        defined in the `page_type_regexes` property.
+
+        Args:
+            pagetexts (list[str]): List of text content from PDF pages.
+
+        Returns:
+            dict[str, list[str]]: A dictionary where keys are page types and values
+            are lists of pagetexts belonging to that type.
+        """
+
+        classified_pagetexts: dict[str, list[str]] = defaultdict(list)
+
+        # Iterate through pages, assign to first matching type or OTHER
+        for pagetext in pagetexts:
+            classification = self.PAGE_TYPE_OTHER
+            for regex, page_type in self.page_type_regexes.items():
+                if re.search(regex, pagetext):
+                    classification = page_type
+                    break
+            classified_pagetexts[classification].append(pagetext)
+
+        return dict(classified_pagetexts)
 
     def _extract_transactions(self, pagetexts: list[str]) -> pd.DataFrame:
         transaction_tables = []
@@ -70,26 +109,12 @@ class BillParser(ABC):
 
 
 class BillParserA(BillParser):
-    def _classify_pages(self, pagetexts: list[str]) -> dict[str, list[str]]:
-        classified_pagetexts = {}
-
-        # Iterate through pages
-        for pagetext in pagetexts:
-            if re.findall("due by", pagetext, re.IGNORECASE):
-                page_type = "summary"
-            elif re.findall(
-                "(Reward\nEarned\n.*)New Balance – [^\n]*\n", pagetext, re.DOTALL
-            ):
-                page_type = "transactions"
-            else:
-                page_type = "other"
-
-            if page_type not in classified_pagetexts:
-                classified_pagetexts[page_type] = [pagetext]
-            else:
-                classified_pagetexts[page_type].append(pagetext)
-
-        return classified_pagetexts
+    @property
+    def page_type_regexes(self) -> dict[str, str]:
+        return {
+            "due by": self.PAGE_TYPE_SUMMARY,
+            "Transaction\nDate": self.PAGE_TYPE_TRANSACTIONS,
+        }
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         # "New Balance – .*\n" indicates the end of this sequence, but we want to exclude that summary row
@@ -177,25 +202,15 @@ class BillParserB(BillParser):
         self.statement_date = datetime.strptime(
             statement_date_line, "Statement date: %B %d, %Y "
         )
+        # TODO: Defining an abstract property is in general cleaner than
+        # redefining __init__ when there's no additional logic.
 
-    def _classify_pages(self, pagetexts: list[str]) -> dict[str, list[str]]:
-        classified_pagetexts = {}
-
-        # Iterate through pages
-        for pagetext in pagetexts:
-            if re.findall("Balance from your last statement", pagetext):
-                page_type = "summary"
-            elif re.findall("TRANSACTION DESCRIPTION", pagetext):
-                page_type = "transactions"
-            else:
-                page_type = "other"
-
-            if page_type not in classified_pagetexts:
-                classified_pagetexts[page_type] = [pagetext]
-            else:
-                classified_pagetexts[page_type].append(pagetext)
-
-        return classified_pagetexts
+    @property
+    def page_type_regexes(self) -> dict[str, str]:
+        return {
+            "Balance from your last statement": self.PAGE_TYPE_SUMMARY,
+            "TRANSACTION DESCRIPTION": self.PAGE_TYPE_TRANSACTIONS,
+        }
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
@@ -293,24 +308,12 @@ class BillParserC(BillParser):
         )[0]
         self.statement_date = datetime.strptime(statement_date_line, "%b. %d, %Y")
 
-    def _classify_pages(self, pagetexts: list[str]) -> dict[str, list[str]]:
-        classified_pagetexts = {}
-
-        # Iterate through pages
-        for pagetext in pagetexts:
-            if re.findall("Summary of your account", pagetext):
-                page_type = "summary"
-            elif re.findall("Transactions since your last statement", pagetext):
-                page_type = "transactions"
-            else:
-                page_type = "other"
-
-            if page_type not in classified_pagetexts:
-                classified_pagetexts[page_type] = [pagetext]
-            else:
-                classified_pagetexts[page_type].append(pagetext)
-
-        return classified_pagetexts
+    @property
+    def page_type_regexes(self) -> dict[str, str]:
+        return {
+            "Summary of your account": self.PAGE_TYPE_SUMMARY,
+            "Transactions since your last statement": self.PAGE_TYPE_TRANSACTIONS,
+        }
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
@@ -411,24 +414,12 @@ class BillParserD(BillParser):
         statement_date = statement_date_line.split("to ")[1]
         self.statement_date = datetime.strptime(statement_date, "%B %d, %Y")
 
-    def _classify_pages(self, pagetexts: list[str]) -> dict[str, list[str]]:
-        classified_pagetexts = {}
-
-        # Iterate through pages
-        for pagetext in pagetexts:
-            if re.findall("Your account at a glance", pagetext):
-                page_type = "summary"
-            elif re.findall("Transactions from", pagetext):
-                page_type = "transactions"
-            else:
-                page_type = "other"
-
-            if page_type not in classified_pagetexts:
-                classified_pagetexts[page_type] = [pagetext]
-            else:
-                classified_pagetexts[page_type].append(pagetext)
-
-        return classified_pagetexts
+    @property
+    def page_type_regexes(self) -> dict[str, str]:
+        return {
+            "Your account at a glance": self.PAGE_TYPE_SUMMARY,
+            "Transactions from": self.PAGE_TYPE_TRANSACTIONS,
+        }
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
