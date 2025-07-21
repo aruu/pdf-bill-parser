@@ -32,13 +32,16 @@ class BillParser(ABC):
         self.file_name = file_name
         self.pagetexts = pagetexts
         self.classified_pagetexts = self._classify_pages(self.pagetexts)
+        self.statement_date = self._extract_statement_date(
+            self.classified_pagetexts["summary"][0]
+        )
         self.transactions = self._extract_transactions(
             self.classified_pagetexts["transactions"]
         )
 
     @property
     @abstractmethod
-    def page_type_regexes(self) -> dict[str, str]:
+    def PAGE_TYPE_REGEXES(self) -> dict[str, str]:
         """Returns a dictionary of regex patterns for classifying pages.
         The keys are the regex patterns used for classification, and the values
         are the page types (e.g., 'summary', 'transactions', 'other').
@@ -49,7 +52,7 @@ class BillParser(ABC):
         """Classify pages based on the provided regex patterns.
         This method iterates through the pagetexts and classifies each page
         into 'summary', 'transactions', or 'other' based on the regex patterns
-        defined in the `page_type_regexes` property.
+        defined in the `PAGE_TYPE_REGEXES` property.
 
         Args:
             pagetexts (list[str]): List of text content from PDF pages.
@@ -64,13 +67,39 @@ class BillParser(ABC):
         # Iterate through pages, assign to first matching type or OTHER
         for pagetext in pagetexts:
             classification = self.PAGE_TYPE_OTHER
-            for regex, page_type in self.page_type_regexes.items():
+            for regex, page_type in self.PAGE_TYPE_REGEXES.items():
                 if re.search(regex, pagetext):
                     classification = page_type
                     break
             classified_pagetexts[classification].append(pagetext)
 
         return dict(classified_pagetexts)
+
+    @property
+    @abstractmethod
+    def STATEMENT_DATE_REGEX(self) -> str:
+        """Returns the regex pattern used to extract the statement date from the summary page."""
+        pass
+
+    @property
+    @abstractmethod
+    def STATEMENT_DATE_FORMAT(self) -> str:
+        """Returns the format string used to parse the statement date."""
+        pass
+
+    def _extract_statement_date(self, summary_pagetext: str) -> datetime:
+        """Extract the statement date from the summary page text.
+        This method uses the `STATEMENT_DATE_REGEX` to find the date string
+        and then parses it using the `STATEMENT_DATE_FORMAT`.
+
+        Args:
+            summary_pagetext (str): The text content of the summary page.
+
+        Returns:
+            datetime: The parsed statement date.
+        """
+        statement_date_str = re.findall(self.STATEMENT_DATE_REGEX, summary_pagetext)[0]
+        return datetime.strptime(statement_date_str, self.STATEMENT_DATE_FORMAT)
 
     def _extract_transactions(self, pagetexts: list[str]) -> pd.DataFrame:
         transaction_tables = []
@@ -109,12 +138,12 @@ class BillParser(ABC):
 
 
 class BillParserA(BillParser):
-    @property
-    def page_type_regexes(self) -> dict[str, str]:
-        return {
-            "due by": self.PAGE_TYPE_SUMMARY,
-            "Transaction\nDate": self.PAGE_TYPE_TRANSACTIONS,
-        }
+    PAGE_TYPE_REGEXES = {
+        "due by": BillParser.PAGE_TYPE_SUMMARY,
+        "Transaction\nDate": BillParser.PAGE_TYPE_TRANSACTIONS,
+    }
+    STATEMENT_DATE_REGEX = ".* to (.*)\nStatement period"
+    STATEMENT_DATE_FORMAT = "%b %d, %Y"
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         # "New Balance – .*\n" indicates the end of this sequence, but we want to exclude that summary row
@@ -194,23 +223,12 @@ class BillParserA(BillParser):
 
 
 class BillParserB(BillParser):
-    def __init__(self, account_name, file_name, pagetexts):
-        super().__init__(account_name, file_name, pagetexts)
-
-        # Extract the statement date to resolve the year of the transaction date
-        statement_date_line = self.classified_pagetexts["summary"][0].split("\n")[1]
-        self.statement_date = datetime.strptime(
-            statement_date_line, "Statement date: %B %d, %Y "
-        )
-        # TODO: Defining an abstract property is in general cleaner than
-        # redefining __init__ when there's no additional logic.
-
-    @property
-    def page_type_regexes(self) -> dict[str, str]:
-        return {
-            "Balance from your last statement": self.PAGE_TYPE_SUMMARY,
-            "TRANSACTION DESCRIPTION": self.PAGE_TYPE_TRANSACTIONS,
-        }
+    PAGE_TYPE_REGEXES = {
+        "Balance from your last statement": BillParser.PAGE_TYPE_SUMMARY,
+        "TRANSACTION DESCRIPTION": BillParser.PAGE_TYPE_TRANSACTIONS,
+    }
+    STATEMENT_DATE_REGEX = "Statement date: (.*) "
+    STATEMENT_DATE_FORMAT = "%B %d, %Y"
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
@@ -299,21 +317,12 @@ class BillParserB(BillParser):
 
 
 class BillParserC(BillParser):
-    def __init__(self, account_name, file_name, pagetexts):
-        super().__init__(account_name, file_name, pagetexts)
-
-        # Extract the statement date to resolve the year of the transaction date
-        statement_date_line = re.findall(
-            "Statement date\n(.*)\n", self.classified_pagetexts["summary"][0]
-        )[0]
-        self.statement_date = datetime.strptime(statement_date_line, "%b. %d, %Y")
-
-    @property
-    def page_type_regexes(self) -> dict[str, str]:
-        return {
-            "Summary of your account": self.PAGE_TYPE_SUMMARY,
-            "Transactions since your last statement": self.PAGE_TYPE_TRANSACTIONS,
-        }
+    PAGE_TYPE_REGEXES = {
+        "Summary of your account": BillParser.PAGE_TYPE_SUMMARY,
+        "Transactions since your last statement": BillParser.PAGE_TYPE_TRANSACTIONS,
+    }
+    STATEMENT_DATE_REGEX = "Statement date\n(.*)\n"
+    STATEMENT_DATE_FORMAT = "%b. %d, %Y"
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
@@ -404,22 +413,12 @@ class BillParserC(BillParser):
 
 
 class BillParserD(BillParser):
-    def __init__(self, account_name, file_name, pagetexts):
-        super().__init__(account_name, file_name, pagetexts)
-
-        # Extract the statement date to resolve the year of the transaction date
-        statement_date_line = self.classified_pagetexts["transactions"][0].split("\n")[
-            1
-        ]
-        statement_date = statement_date_line.split("to ")[1]
-        self.statement_date = datetime.strptime(statement_date, "%B %d, %Y")
-
-    @property
-    def page_type_regexes(self) -> dict[str, str]:
-        return {
-            "Your account at a glance": self.PAGE_TYPE_SUMMARY,
-            "Transactions from": self.PAGE_TYPE_TRANSACTIONS,
-        }
+    PAGE_TYPE_REGEXES = {
+        "Your account at a glance": BillParser.PAGE_TYPE_SUMMARY,
+        "Transactions from": BillParser.PAGE_TYPE_TRANSACTIONS,
+    }
+    STATEMENT_DATE_REGEX = ".* statement period\n.* to (.*)"
+    STATEMENT_DATE_FORMAT = "%B %d, %Y"
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
