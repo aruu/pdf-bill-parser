@@ -138,12 +138,12 @@ class BillParser(ABC):
 
 
 class BillParserA(BillParser):
-    PAGE_TYPE_REGEXES = {
+    PAGE_TYPE_REGEXES = {  # type: ignore
         "due by": BillParser.PAGE_TYPE_SUMMARY,
         "Transaction\nDate": BillParser.PAGE_TYPE_TRANSACTIONS,
     }
-    STATEMENT_DATE_REGEX = ".* to (.*)\nStatement period"
-    STATEMENT_DATE_FORMAT = "%b %d, %Y"
+    STATEMENT_DATE_REGEX = ".* to (.*)\nStatement period"  # type: ignore
+    STATEMENT_DATE_FORMAT = "%b %d, %Y"  # type: ignore
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         # "New Balance – .*\n" indicates the end of this sequence, but we want to exclude that summary row
@@ -223,12 +223,12 @@ class BillParserA(BillParser):
 
 
 class BillParserB(BillParser):
-    PAGE_TYPE_REGEXES = {
+    PAGE_TYPE_REGEXES = {  # type: ignore
         "Balance from your last statement": BillParser.PAGE_TYPE_SUMMARY,
         "TRANSACTION DESCRIPTION": BillParser.PAGE_TYPE_TRANSACTIONS,
     }
-    STATEMENT_DATE_REGEX = "Statement date: (.*) "
-    STATEMENT_DATE_FORMAT = "%B %d, %Y"
+    STATEMENT_DATE_REGEX = "Statement date: (.*) "  # type: ignore
+    STATEMENT_DATE_FORMAT = "%B %d, %Y"  # type: ignore
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
@@ -317,12 +317,12 @@ class BillParserB(BillParser):
 
 
 class BillParserC(BillParser):
-    PAGE_TYPE_REGEXES = {
+    PAGE_TYPE_REGEXES = {  # type: ignore
         "Summary of your account": BillParser.PAGE_TYPE_SUMMARY,
         "Transactions since your last statement": BillParser.PAGE_TYPE_TRANSACTIONS,
     }
-    STATEMENT_DATE_REGEX = "Statement date\n(.*)\n"
-    STATEMENT_DATE_FORMAT = "%b. %d, %Y"
+    STATEMENT_DATE_REGEX = "Statement date\n(.*)\n"  # type: ignore
+    STATEMENT_DATE_FORMAT = "%b. %d, %Y"  # type: ignore
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
@@ -413,12 +413,12 @@ class BillParserC(BillParser):
 
 
 class BillParserD(BillParser):
-    PAGE_TYPE_REGEXES = {
+    PAGE_TYPE_REGEXES = {  # type: ignore
         "Your account at a glance": BillParser.PAGE_TYPE_SUMMARY,
         "Transactions from": BillParser.PAGE_TYPE_TRANSACTIONS,
     }
-    STATEMENT_DATE_REGEX = ".* statement period\n.* to (.*)"
-    STATEMENT_DATE_FORMAT = "%B %d, %Y"
+    STATEMENT_DATE_REGEX = ".* statement period\n.* to (.*)"  # type: ignore
+    STATEMENT_DATE_FORMAT = "%B %d, %Y"  # type: ignore
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(

@@ -1,14 +1,15 @@
 # %%
 import re
 from pathlib import Path
+from typing import Type
 
 import pandas as pd
 import pymupdf
 import yaml
 
-from bill_parser import BillParserA, BillParserB, BillParserC, BillParserD
+from bill_parser import BillParser, BillParserA, BillParserB, BillParserC, BillParserD
 
-PARSER_MAPPING = {
+PARSER_MAPPING: dict[str, Type[BillParser]] = {
     "BillParserA": BillParserA,
     "BillParserB": BillParserB,
     "BillParserC": BillParserC,
@@ -39,18 +40,21 @@ if __name__ == "__main__":
     # First, iterate through all accounts and bills and output a TSV per bill
     for account_path in root_data_path.iterdir():
         # Determine the BillParser class to use based on the account name
+        parser = None
         for mapping in account_mapping:
             # Use the first pattern that matches
             if re.search(mapping["pattern"], account_path.name):
                 parser = PARSER_MAPPING[mapping["parser"]]
                 break
+        if parser is None:
+            raise ValueError(f"No parser found for account {account_path.name}")
 
         for bill_path in account_path.iterdir():
             print(bill_path)
 
             # Open the PDF and extract the text from each page
             doc = pymupdf.open(bill_path)
-            pagetexts = [page.get_text() for page in doc]
+            pagetexts = [page.get_text() for page in doc]  # type: ignore
             doc.close()
 
             # Parse the pagetexts into CSV format
