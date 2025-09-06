@@ -27,6 +27,17 @@ class BillParser(ABC):
     END_OF_ROW = "end_of_row"
     END_OF_ROW_TOKEN = "EOR"
 
+    # Class variables that must be defined in subclasses
+    PAGE_TYPE_REGEXES: dict[str, str]
+    """Dictionary of regex patterns for classifying pages.
+    Keys are regex patterns, and values are the corresponding page types 
+    (e.g., 'summary', 'transactions', 'other').
+    """
+    STATEMENT_DATE_REGEX: str
+    """Regex pattern used to extract the statement date from the summary page."""
+    STATEMENT_DATE_FORMAT: str
+    """Format string used to parse the statement date."""
+
     def __init__(self, account_name, file_name, pagetexts):
         self.account_name = account_name
         self.file_name = file_name
@@ -39,20 +50,24 @@ class BillParser(ABC):
             self.classified_pagetexts["transactions"]
         )
 
-    @property
-    @abstractmethod
-    def PAGE_TYPE_REGEXES(self) -> dict[str, str]:
-        """Returns a dictionary of regex patterns for classifying pages.
-        The keys are the regex patterns used for classification, and the values
-        are the page types (e.g., 'summary', 'transactions', 'other').
-        """
-        pass
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+
+        # Ensure subclasses define required class variables
+        required_class_vars = [
+            "PAGE_TYPE_REGEXES",
+            "STATEMENT_DATE_REGEX",
+            "STATEMENT_DATE_FORMAT",
+        ]
+        for var in required_class_vars:
+            if not hasattr(cls, var):
+                raise TypeError(f"{cls.__name__} must define class variable {var}")
 
     def _classify_pages(self, pagetexts: list[str]) -> dict[str, list[str]]:
         """Classify pages based on the provided regex patterns.
         This method iterates through the pagetexts and classifies each page
         into 'summary', 'transactions', or 'other' based on the regex patterns
-        defined in the `PAGE_TYPE_REGEXES` property.
+        defined in the `PAGE_TYPE_REGEXES`.
 
         Args:
             pagetexts (list[str]): List of text content from PDF pages.
@@ -74,18 +89,6 @@ class BillParser(ABC):
             classified_pagetexts[classification].append(pagetext)
 
         return dict(classified_pagetexts)
-
-    @property
-    @abstractmethod
-    def STATEMENT_DATE_REGEX(self) -> str:
-        """Returns the regex pattern used to extract the statement date from the summary page."""
-        pass
-
-    @property
-    @abstractmethod
-    def STATEMENT_DATE_FORMAT(self) -> str:
-        """Returns the format string used to parse the statement date."""
-        pass
 
     def _extract_statement_date(self, summary_pagetext: str) -> datetime:
         """Extract the statement date from the summary page text.
@@ -138,12 +141,12 @@ class BillParser(ABC):
 
 
 class BillParserA(BillParser):
-    PAGE_TYPE_REGEXES = {  # type: ignore
+    PAGE_TYPE_REGEXES = {
         "due by": BillParser.PAGE_TYPE_SUMMARY,
         "Transaction\nDate": BillParser.PAGE_TYPE_TRANSACTIONS,
     }
-    STATEMENT_DATE_REGEX = ".* to (.*)\nStatement period"  # type: ignore
-    STATEMENT_DATE_FORMAT = "%b %d, %Y"  # type: ignore
+    STATEMENT_DATE_REGEX = ".* to (.*)\nStatement period"
+    STATEMENT_DATE_FORMAT = "%b %d, %Y"
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         # "New Balance – .*\n" indicates the end of this sequence, but we want to exclude that summary row
@@ -223,12 +226,12 @@ class BillParserA(BillParser):
 
 
 class BillParserB(BillParser):
-    PAGE_TYPE_REGEXES = {  # type: ignore
+    PAGE_TYPE_REGEXES = {
         "Balance from your last statement": BillParser.PAGE_TYPE_SUMMARY,
         "TRANSACTION DESCRIPTION": BillParser.PAGE_TYPE_TRANSACTIONS,
     }
-    STATEMENT_DATE_REGEX = "Statement date: (.*) "  # type: ignore
-    STATEMENT_DATE_FORMAT = "%B %d, %Y"  # type: ignore
+    STATEMENT_DATE_REGEX = "Statement date: (.*) "
+    STATEMENT_DATE_FORMAT = "%B %d, %Y"
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
@@ -317,12 +320,12 @@ class BillParserB(BillParser):
 
 
 class BillParserC(BillParser):
-    PAGE_TYPE_REGEXES = {  # type: ignore
+    PAGE_TYPE_REGEXES = {
         "Summary of your account": BillParser.PAGE_TYPE_SUMMARY,
         "Transactions since your last statement": BillParser.PAGE_TYPE_TRANSACTIONS,
     }
-    STATEMENT_DATE_REGEX = "Statement date\n(.*)\n"  # type: ignore
-    STATEMENT_DATE_FORMAT = "%b. %d, %Y"  # type: ignore
+    STATEMENT_DATE_REGEX = "Statement date\n(.*)\n"
+    STATEMENT_DATE_FORMAT = "%b. %d, %Y"
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
@@ -413,12 +416,12 @@ class BillParserC(BillParser):
 
 
 class BillParserD(BillParser):
-    PAGE_TYPE_REGEXES = {  # type: ignore
+    PAGE_TYPE_REGEXES = {
         "Your account at a glance": BillParser.PAGE_TYPE_SUMMARY,
         "Transactions from": BillParser.PAGE_TYPE_TRANSACTIONS,
     }
-    STATEMENT_DATE_REGEX = ".* statement period\n.* to (.*)"  # type: ignore
-    STATEMENT_DATE_FORMAT = "%B %d, %Y"  # type: ignore
+    STATEMENT_DATE_REGEX = ".* statement period\n.* to (.*)"
+    STATEMENT_DATE_FORMAT = "%B %d, %Y"
 
     def _tabletext_extractor(self, pagetext: str) -> list[str]:
         tabletexts = re.findall(
