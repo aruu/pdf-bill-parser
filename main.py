@@ -53,9 +53,8 @@ if __name__ == "__main__":
             print(bill_path)
 
             # Open the PDF and extract the text from each page
-            doc = pymupdf.open(bill_path)
-            pagetexts = [page.get_text() for page in doc.pages()]
-            doc.close()
+            with pymupdf.open(bill_path) as doc:
+                pagetexts = [page.get_text() for page in doc.pages()]
 
             # Parse the pagetexts into CSV format
             bill_parser = parser(
