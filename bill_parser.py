@@ -557,13 +557,13 @@ class BillParserE(BillParser):
                 case "reward_earned":
                     # Sometimes there are additional lines that we need to skip
                     # These may appear at the start of each row
-                    while not (
+                    while len(lines) >= 2 and not (
                         (re.match(r"^\$\d+\.\d\d$", lines[0]) or lines[0] == "–")
                         and re.match(r"^-?\$\d+\.\d\d$", lines[1])
                     ):
                         lines.pop(0)
-                        if len(lines) < 2:
-                            break
+                    if len(lines) < 2:
+                        break
 
                     buffer["reward_earned"] = lines.pop(0)
                     state = "amount"
