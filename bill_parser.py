@@ -198,7 +198,7 @@ class BillParserA(BillParser):
                     if "description" not in buffer:
                         buffer["description"] = lines.pop(0)
                     else:
-                        buffer["description"] += lines.pop(0)
+                        buffer["description"] += " " + lines.pop(0)
                 case "posted_date":
                     buffer["posted_date"] = lines.pop(0)
                     state = "transaction_date"
@@ -518,5 +518,96 @@ class BillParserD(BillParser):
             + " "
             + transactions["transaction_date_year"].astype(str),
             format="%b %d %Y",
+        )
+        return transactions
+
+
+class BillParserE(BillParser):
+    PAGE_TYPE_REGEXES = {
+        "due by": BillParser.PAGE_TYPE_SUMMARY,
+        "Transaction\nDate": BillParser.PAGE_TYPE_TRANSACTIONS,
+    }
+    STATEMENT_DATE_REGEX = "Statement period \n.* to (.*)"
+    STATEMENT_DATE_FORMAT = "%b %d, %Y"
+
+    def _tabletext_extractor(self, pagetext: str) -> list[str]:
+        # "New Balance – .*\n" indicates the end of this sequence, but we want to exclude that summary row
+        tabletexts = re.findall(
+            "(Reward\nEarned\n(?s:.)*\n)New Balance – .*\n", pagetext
+        )
+
+        return tabletexts
+
+    def _parse_transaction_table(self, tabletext: str) -> pd.DataFrame:
+        # Split the input text into lines - these can be treated as input into a state machine
+        lines = tabletext.splitlines()
+
+        transactions = []
+        initial_state = "reward_earned"
+
+        buffer = {}
+        state = initial_state
+
+        # Skip the header lines
+        lines = lines[9:]
+
+        # State machine like processing
+        while lines:
+            match state:
+                case "reward_earned":
+                    # Sometimes there are additional lines that we need to skip
+                    # These may appear at the start of each row
+                    while not (
+                        (re.match(r"^\$\d+\.\d\d$", lines[0]) or lines[0] == "–")
+                        and re.match(r"^-?\$\d+\.\d\d$", lines[1])
+                    ):
+                        lines.pop(0)
+                        if len(lines) < 2:
+                            break
+
+                    buffer["reward_earned"] = lines.pop(0)
+                    state = "amount"
+                case "amount":
+                    buffer["amount"] = lines.pop(0)
+                    state = "category"
+                case "category":
+                    # Special handling since it can include "–" to represent Uncategorized
+                    # Otherwise this is actually the start of the description so don't consume the line
+                    if lines[0] != "–":
+                        buffer["category"] = ""
+                    else:
+                        buffer["category"] = lines.pop(0)
+                    state = "description"
+                case "description":
+                    # The description can be multi-line so we're not actually sure when it ends, until we reach the posted_date
+                    if re.match(r"\d{2}-\D{3}-\d{4}", lines[0]):
+                        state = "posted_date"
+                        continue
+                    if "description" not in buffer:
+                        buffer["description"] = lines.pop(0)
+                    else:
+                        buffer["description"] += " " + lines.pop(0)
+                case "posted_date":
+                    buffer["posted_date"] = lines.pop(0)
+                    state = "transaction_date"
+                case "transaction_date":
+                    buffer["transaction_date"] = lines.pop(0)
+                    state = self.END_OF_ROW
+                    # Need a placeholder token to process the end of the row
+                    lines.insert(0, self.END_OF_ROW_TOKEN)
+                case self.END_OF_ROW:
+                    transactions.append(buffer.copy())
+                    buffer = {}
+                    state = initial_state
+                    lines.pop(0)
+
+        return pd.DataFrame(transactions)
+
+    def _pre_process_transactions(self, transactions: pd.DataFrame) -> pd.DataFrame:
+        transactions["transaction_date"] = pd.to_datetime(
+            transactions["transaction_date"], format="%d-%b-%Y"
+        ).dt.strftime("%Y-%m-%d")
+        transactions["amount"] = (
+            transactions["amount"].str.replace("$", "").str.replace(",", "")
         )
         return transactions

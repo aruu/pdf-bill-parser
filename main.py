@@ -7,13 +7,21 @@ import pandas as pd
 import pymupdf
 import yaml
 
-from bill_parser import BillParser, BillParserA, BillParserB, BillParserC, BillParserD
+from bill_parser import (
+    BillParser,
+    BillParserA,
+    BillParserB,
+    BillParserC,
+    BillParserD,
+    BillParserE,
+)
 
 PARSER_MAPPING: dict[str, Type[BillParser]] = {
     "BillParserA": BillParserA,
     "BillParserB": BillParserB,
     "BillParserC": BillParserC,
     "BillParserD": BillParserD,
+    "BillParserE": BillParserE,
 }
 
 CONFIG_YAML_FILENAME = "config.yaml"
