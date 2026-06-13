@@ -20,7 +20,8 @@
         "ms-toolsai.python-ds-extension-pack",
         "charliermarsh.ruff",
         "mechatroner.rainbow-csv",
-        "tamasfe.even-better-toml"
+        "tamasfe.even-better-toml",
+        "redhat.vscode-yaml"
       ]
     }
   }
