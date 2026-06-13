@@ -10,6 +10,7 @@ pyyaml = "*"
 
 [dev-packages]
 ipykernel = "*"
+pytest = "*"
 
 [requires]
 python_version = "3.12"
