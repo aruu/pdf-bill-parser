@@ -8,3 +8,6 @@ description_mapping:
   "Property Tax": "Taxes"
   "grocery store": "Groceries"
   "market": "Groceries"
+
+ingest_output:
+  mode: csv
