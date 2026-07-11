@@ -22,7 +22,16 @@
         "mechatroner.rainbow-csv",
         "tamasfe.even-better-toml",
         "redhat.vscode-yaml"
-      ]
+      ],
+      "settings": {
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff" // Override default
+        },
+        "python-envs.defaultEnvManager": "ms-python.python:pipenv",
+        "python.testing.pytestArgs": ["tests"],
+        "python.testing.unittestEnabled": false,
+        "python.testing.pytestEnabled": true
+      }
     }
   }
 
