@@ -8,6 +8,7 @@ import pandas as pd
 import pymupdf
 
 from config import get_config
+from google_sheets import append_to_google_sheets, get_gspread_client
 
 
 def extract_pdf_pages(doc_path: Path) -> str:
@@ -47,19 +48,19 @@ def ingest_pdfs(
 
     # Iterate through all accounts and documents
 
-    # 1. Use .glob() to flatten the nested loops and filter explicitly for PDFs
+    # Use .glob() to flatten the nested loops and filter explicitly for PDFs
     pdf_paths = Path(data_dir).glob("*/*.pdf")
 
-    # 2. Use a generator expression to feed pandas (more memory efficient)
-    records = (
+    records = [
         {
             "account": path.parent.name,
             "document": path.name,
             "pages": extract_pdf_pages(path),
         }
         for path in pdf_paths
-    )
-    documents_df = pd.DataFrame(records)
+    ]
+    # Ensure the DataFrame has the correct schema even when no PDFs are found.
+    documents_df = pd.DataFrame(records, columns=["account", "document", "pages"])
 
     # Output to the specified destination
     match output_mode:
@@ -69,10 +70,16 @@ def ingest_pdfs(
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w") as f:
                 f.write(documents_csv)
+
         case "google_sheets":
-            raise NotImplementedError(
-                "Google Sheets output mode is not yet implemented."
+            gc = get_gspread_client()
+            append_to_google_sheets(
+                gc=gc,
+                spreadsheet_name=output_spreadsheet,
+                worksheet_name=output_worksheet,
+                df=documents_df,
             )
+
         case _:
             raise ValueError(
                 f"Invalid output mode: {output_mode}. Must be 'csv' or 'google_sheets'."

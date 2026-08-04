@@ -7,6 +7,7 @@ name = "pypi"
 pymupdf = "*"
 pandas = "*"
 pyyaml = "*"
+gspread = "*"
 
 [dev-packages]
 ipykernel = "*"
