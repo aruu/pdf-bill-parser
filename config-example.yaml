@@ -10,4 +10,7 @@ description_mapping:
   "market": "Groceries"
 
 ingest_output:
-  mode: csv
+  # mode: csv
+  mode: google_sheets
+  spreadsheet_name: Transactions
+  worksheet_name: Documents_RAW
