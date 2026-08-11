@@ -8,3 +8,9 @@ description_mapping:
   "Property Tax": "Taxes"
   "grocery store": "Groceries"
   "market": "Groceries"
+
+ingest_output:
+  # mode: csv
+  mode: google_sheets
+  spreadsheet_name: Transactions
+  worksheet_name: Documents_RAW
