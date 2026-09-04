@@ -60,7 +60,7 @@ def extract_transactions(row: pd.Series) -> str:
 def extract():
     """Extract transactions data from each document JSON.
 
-    This wrapper function executes the extract pipeline.
+    This wrapper function executes the extract pipeline with Google Sheets input and output.
     """
     config = get_config()
     tbl_ingest_config: dict[str, Any] = config["ingest"]

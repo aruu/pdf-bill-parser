@@ -191,7 +191,7 @@ class BillParserC(BillParser):
                     state = "description"
                 case "description":
                     # The description can be multi-line so we're not actually sure when it ends, until we reach the amount
-                    if re.match(r"^[\d,]*\.\d\d (\xa0CR)?$", lines[0]):
+                    if re.match(r"^[\d,]*\.\d\d ?(\xa0CR)?$", lines[0]):
                         state = "amount"
                         continue
                     # There seems to be a variable amount of spaces in the description - clean it up
@@ -200,7 +200,7 @@ class BillParserC(BillParser):
                     else:
                         buffer["description"] += " " + " ".join(lines.pop(0).split())
                 case "amount":
-                    buffer["amount"] = lines.pop(0).strip()
+                    buffer["amount"] = lines.pop(0)
                     state = self.END_OF_ROW
                     # Need a placeholder token to process the end of the row
                     lines.insert(0, self.END_OF_ROW_TOKEN)
@@ -216,7 +216,13 @@ class BillParserC(BillParser):
         transactions["amount"] = (
             transactions["amount"]
             .str.replace(",", "")
-            .apply(lambda x: "-" + x.replace(" \xa0CR", "") if " \xa0CR" in x else x)
+            .apply(
+                lambda x: (
+                    "-" + x.replace("\xa0CR", "").strip()
+                    if "\xa0CR" in x
+                    else x.strip()
+                )
+            )
         )
 
         # Determine the year from the statement date
