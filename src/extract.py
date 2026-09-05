@@ -43,18 +43,18 @@ def extract_transactions(row: pd.Series) -> str:
     for mapping in account_mapping:
         # Use the first pattern that matches
         if re.search(mapping["pattern"], document_dict["account"]):
+            logger.info(
+                f"Using extractor {mapping['extractor']} for account {document_dict['account']}"
+            )
             extractor = EXTRACTOR_MAPPING[mapping["extractor"]]
             break
     if extractor is None:
         return EXTRACT_SCHEMA.to_csv(index=False)
         raise ValueError(f"No extractor found for account {document_dict['account']}")
 
-    extractor_instance = extractor(
-        account_name=document_dict["account"],
-        file_name=document_dict["document"],
-        pagetexts=list(pages.values()),
-    )
-    return extractor_instance.get_csv_text()
+    return extractor.extract_transactions_csv(
+        pagetexts=list(pages.values())
+    ).strip()  # remove the trailing newline
 
 
 def extract():

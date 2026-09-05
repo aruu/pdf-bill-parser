@@ -1,12 +1,22 @@
 import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import datetime
 
 import pandas as pd
 
+# Constants for page types
+PAGE_TYPE_SUMMARY = "summary"
+PAGE_TYPE_TRANSACTIONS = "transactions"
+PAGE_TYPE_OTHER = "other"
 
-class BillParser(ABC):
+# Constants for transaction table processing
+END_OF_ROW = "end_of_row"
+END_OF_ROW_TOKEN = "EOR"
+
+
+class Extractor(ABC):
     """
     Parse pagetext into a CSV format.
 
@@ -18,17 +28,8 @@ class BillParser(ABC):
         csvtext = BillParser(account_name, file_name, pagetexts).get_csv()
     """
 
-    # Constants for page types
-    PAGE_TYPE_SUMMARY = "summary"
-    PAGE_TYPE_TRANSACTIONS = "transactions"
-    PAGE_TYPE_OTHER = "other"
-
-    # Constants for transaction table processing
-    END_OF_ROW = "end_of_row"
-    END_OF_ROW_TOKEN = "EOR"
-
     # Class variables that must be defined in subclasses
-    PAGE_TYPE_REGEXES: dict[str, str]
+    PAGE_TYPE_REGEXES: Mapping[str, str]
     """Dictionary of regex patterns for classifying pages.
     Keys are regex patterns, and values are the corresponding page types 
     (e.g., 'summary', 'transactions', 'other').
@@ -37,18 +38,6 @@ class BillParser(ABC):
     """Regex pattern used to extract the statement date from the summary page."""
     STATEMENT_DATE_FORMAT: str
     """Format string used to parse the statement date."""
-
-    def __init__(self, account_name, file_name, pagetexts):
-        self.account_name = account_name
-        self.file_name = file_name
-        self.pagetexts = pagetexts
-        self.classified_pagetexts = self._classify_pages(self.pagetexts)
-        self.statement_date = self._extract_statement_date(
-            self.classified_pagetexts["summary"][0]
-        )
-        self.transactions = self._extract_transactions(
-            self.classified_pagetexts["transactions"]
-        )
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
@@ -63,7 +52,8 @@ class BillParser(ABC):
             if not hasattr(cls, var):
                 raise TypeError(f"{cls.__name__} must define class variable {var}")
 
-    def _classify_pages(self, pagetexts: list[str]) -> dict[str, list[str]]:
+    @classmethod
+    def _classify_pages(cls, pagetexts: list[str]) -> dict[str, list[str]]:
         """Classify pages based on the provided regex patterns.
         This method iterates through the pagetexts and classifies each page
         into 'summary', 'transactions', or 'other' based on the regex patterns
@@ -81,8 +71,8 @@ class BillParser(ABC):
 
         # Iterate through pages, assign to first matching type or OTHER
         for pagetext in pagetexts:
-            classification = self.PAGE_TYPE_OTHER
-            for regex, page_type in self.PAGE_TYPE_REGEXES.items():
+            classification = PAGE_TYPE_OTHER
+            for regex, page_type in cls.PAGE_TYPE_REGEXES.items():
                 if re.search(regex, pagetext):
                     classification = page_type
                     break
@@ -90,7 +80,8 @@ class BillParser(ABC):
 
         return dict(classified_pagetexts)
 
-    def _extract_statement_date(self, summary_pagetext: str) -> datetime:
+    @classmethod
+    def _extract_statement_date(cls, summary_pagetext: str) -> datetime:
         """Extract the statement date from the summary page text.
         This method uses the `STATEMENT_DATE_REGEX` to find the date string
         and then parses it using the `STATEMENT_DATE_FORMAT`.
@@ -101,142 +92,54 @@ class BillParser(ABC):
         Returns:
             datetime: The parsed statement date.
         """
-        statement_date_str = re.findall(self.STATEMENT_DATE_REGEX, summary_pagetext)[0]
-        return datetime.strptime(statement_date_str, self.STATEMENT_DATE_FORMAT)
+        statement_date_str = re.findall(cls.STATEMENT_DATE_REGEX, summary_pagetext)[0]
+        return datetime.strptime(statement_date_str, cls.STATEMENT_DATE_FORMAT)  # noqa: DTZ007
 
-    def _extract_transactions(self, pagetexts: list[str]) -> pd.DataFrame:
+    @classmethod
+    def _extract_transactions(cls, pagetexts: list[str]) -> pd.DataFrame:
+
         transaction_tables = []
-
         for pagetext in pagetexts:
-            tabletexts = self._tabletext_extractor(pagetext)
+            tabletexts = cls._tabletext_extractor(pagetext)
             for tabletext in tabletexts:
-                transaction_tables.append(self._parse_transaction_table(tabletext))
+                transaction_tables.append(cls._parse_transaction_table(tabletext))
 
         transactions_all = pd.concat(transaction_tables)
 
         return transactions_all
 
+    @classmethod
     @abstractmethod
-    def _tabletext_extractor(self, pagetext: str) -> list[str]:
+    def _tabletext_extractor(cls, pagetext: str) -> list[str]:
         pass
 
+    @classmethod
     @abstractmethod
-    def _parse_transaction_table(self, tabletext: str) -> pd.DataFrame:
+    def _parse_transaction_table(cls, tabletext: str) -> pd.DataFrame:
         pass
 
+    @classmethod
     @abstractmethod
-    def _pre_process_transactions(self, transactions: pd.DataFrame) -> pd.DataFrame:
+    def _pre_process_transactions(
+        cls, transactions: pd.DataFrame, statement_date: datetime
+    ) -> pd.DataFrame:
         pass
 
-    def get_csv_text(self):
-        transactions = self._pre_process_transactions(self.transactions)
-        transactions["account_name"] = self.account_name
-        transactions["file_name"] = self.file_name
+    @classmethod
+    def extract_transactions_csv(cls, pagetexts: list[str]) -> str:
+        """Extract transactions data from the provided pagetexts.
 
-        # Select the standard output columns
-        csv_text = transactions[
-            ["transaction_date", "description", "amount", "account_name", "file_name"]
-        ].to_csv(index=False)
-        return csv_text
+        Args:
+            pagetexts (list[str]): List of text content from PDF pages.
+        Returns:
+            str: A CSV string containing the extracted transaction data.
+        """
+        classified_pagetexts = cls._classify_pages(pagetexts)
+        statement_date = cls._extract_statement_date(classified_pagetexts["summary"][0])
+        transactions = cls._extract_transactions(classified_pagetexts["transactions"])
+        transactions = cls._pre_process_transactions(transactions, statement_date)
 
-
-class BillParserC(BillParser):
-    PAGE_TYPE_REGEXES = {
-        "Summary of your account": BillParser.PAGE_TYPE_SUMMARY,
-        "Transactions since your last statement": BillParser.PAGE_TYPE_TRANSACTIONS,
-    }
-    STATEMENT_DATE_REGEX = "Statement date\n(.*)\n"
-    STATEMENT_DATE_FORMAT = "%b. %d, %Y"
-
-    def _tabletext_extractor(self, pagetext: str) -> list[str]:
-        tabletexts = re.findall(
-            r"(TRANS\nDATE\n(?s:.)*)(?:\(continued on next page\)|Subtotal for )",
-            pagetext,
+        # Select the output columns
+        return transactions[["transaction_date", "description", "amount"]].to_csv(
+            index=False
         )
-
-        return tabletexts
-
-    def _parse_transaction_table(self, tabletext: str) -> pd.DataFrame:
-        # Split the input text into lines - these can be treated as input into a state machine
-        lines = tabletext.splitlines()
-
-        transactions = []
-        initial_state = "transaction_date"
-
-        buffer = {}
-        state = initial_state
-
-        # Skip the header lines
-        lines = lines[6:]
-
-        # Sometimes there is an additional header line that we need to skip
-        if re.match(r"^Card number: XXXX XXXX XXXX", lines[0]):
-            lines.pop(0)
-
-        # State machine like processing
-        while lines:
-            match state:
-                case "transaction_date":
-                    line = lines.pop(0)
-                    parts = line.split()
-                    # The posting date could be on the same line - if so, push it back onto the stack
-                    if len(parts) == 4:
-                        lines.insert(0, parts[2] + " " + parts[3])
-                    buffer["transaction_date"] = parts[0] + " " + parts[1]
-                    state = "posting_date"
-                case "posting_date":
-                    line = lines.pop(0)
-                    parts = line.split()
-                    buffer["posting_date"] = parts[0] + " " + parts[1]
-                    state = "description"
-                case "description":
-                    # The description can be multi-line so we're not actually sure when it ends, until we reach the amount
-                    if re.match(r"^[\d,]*\.\d\d ?(\xa0CR)?$", lines[0]):
-                        state = "amount"
-                        continue
-                    # There seems to be a variable amount of spaces in the description - clean it up
-                    if "description" not in buffer:
-                        buffer["description"] = " ".join(lines.pop(0).split())
-                    else:
-                        buffer["description"] += " " + " ".join(lines.pop(0).split())
-                case "amount":
-                    buffer["amount"] = lines.pop(0)
-                    state = self.END_OF_ROW
-                    # Need a placeholder token to process the end of the row
-                    lines.insert(0, self.END_OF_ROW_TOKEN)
-                case self.END_OF_ROW:
-                    transactions.append(buffer.copy())
-                    buffer = {}
-                    state = initial_state
-                    lines.pop(0)
-
-        return pd.DataFrame(transactions)
-
-    def _pre_process_transactions(self, transactions: pd.DataFrame) -> pd.DataFrame:
-        transactions["amount"] = (
-            transactions["amount"]
-            .str.replace(",", "")
-            .apply(
-                lambda x: (
-                    "-" + x.replace("\xa0CR", "").strip()
-                    if "\xa0CR" in x
-                    else x.strip()
-                )
-            )
-        )
-
-        # Determine the year from the statement date
-        transactions["transaction_date_year"] = self.statement_date.year
-        if self.statement_date.month == 1:
-            transactions.loc[
-                transactions["transaction_date"].apply(lambda x: "Dec." in x),
-                "transaction_date_year",
-            ] -= 1
-
-        transactions["transaction_date"] = pd.to_datetime(
-            transactions["transaction_date"]
-            + ", "
-            + transactions["transaction_date_year"].astype(str),
-            format="%b. %d, %Y",
-        )
-        return transactions
