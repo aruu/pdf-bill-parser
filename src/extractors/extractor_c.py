@@ -20,7 +20,7 @@ class ExtractorC(extract.Extractor):
     @classmethod
     def _tabletext_extractor(cls, pagetext: str) -> list[str]:
         tabletexts = re.findall(
-            r"(TRANS\nDATE\n(?s:.)*)(?:\(continued on next page\)|Subtotal for )",
+            r"(TRANS\nDATE\n(?s:.)*?)(?:\(continued on next page\)|Subtotal for )",
             pagetext,
         )
 
