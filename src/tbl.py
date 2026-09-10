@@ -8,12 +8,14 @@ in scope and covering the use cases of CSVs and Google Sheets.
 initially thought, but this package seems quite enticing: https://github.com/betodealmeida/shillelagh)
 """
 
+import logging
 from abc import ABC, abstractmethod
 
 import gspread
 import pandas as pd
 
-import google_sheets as gs
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class Tbl(ABC):
@@ -124,29 +126,34 @@ class TblGoogleSheets(Tbl):
     """A table object that represents a Google Sheets worksheet."""
 
     def __init__(self, config: dict, schema: pd.DataFrame, gc: gspread.Client):
-        self.gc = gc
         self.spreadsheet_name = config["spreadsheet_name"]
         self.worksheet_name = config["worksheet_name"]
+        self.spreadsheet = gc.open(self.spreadsheet_name)
 
+        # Validate/initialize table
         super().__init__(schema)
 
+        # Now store references to the actual table since it exists
+        self.worksheet = self.spreadsheet.worksheet(self.worksheet_name)
+
     def _table_exists(self) -> bool:
-        sh = self.gc.open(self.spreadsheet_name)
-        all_ws = [ws.title for ws in sh.worksheets()]
+        all_ws = [ws.title for ws in self.spreadsheet.worksheets()]
         return self.worksheet_name in all_ws
 
     def _create_table(self) -> None:
-        gs.initialize_worksheet(
-            self.gc,
-            self.spreadsheet_name,
-            self.worksheet_name,
-            self.schema,
+        schema_header = self.schema.columns.to_list()
+
+        ws = self.spreadsheet.add_worksheet(
+            self.worksheet_name, rows=1, cols=len(schema_header)
+        )
+        ws.update([schema_header])
+        logger.info(
+            f"Output Google Sheets worksheet {self.worksheet_name} in spreadsheet {self.spreadsheet_name} does not exist. It was created and initialized with the correct schema."
         )
 
     def _validate_table(self) -> None:
         schema_header = self.schema.columns.to_list()
-        sh = self.gc.open(self.spreadsheet_name)
-        ws = sh.worksheet(self.worksheet_name)
+        ws = self.spreadsheet.worksheet(self.worksheet_name)
 
         # Validate that the structure matches the data being appended
         ws_header = ws.row_values(1)
@@ -156,16 +163,11 @@ class TblGoogleSheets(Tbl):
             )
 
     def _fetch_df(self) -> pd.DataFrame:
-        return gs.fetch_df(
-            self.gc,
-            self.spreadsheet_name,
-            self.worksheet_name,
+        ws = self.worksheet
+        return pd.DataFrame(
+            ws.get_all_records(),
+            columns=ws.row_values(1),
         )
 
     def _append(self, df: pd.DataFrame) -> None:
-        gs.append(
-            self.gc,
-            self.spreadsheet_name,
-            self.worksheet_name,
-            df,
-        )
+        self.worksheet.append_rows(df.to_numpy().tolist())
