@@ -10,6 +10,7 @@ initially thought, but this package seems quite enticing: https://github.com/bet
 
 import logging
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import gspread
 import pandas as pd
@@ -37,7 +38,7 @@ class Tbl(ABC):
         Args:
             schema (pd.DataFrame): A DataFrame representing the schema of the table.
         """
-        self.schema = schema
+        self.schema_header = schema.columns.to_list()
         if self._table_exists():
             self._validate_table()
         else:
@@ -80,10 +81,9 @@ class Tbl(ABC):
         Returns None on success, raise an Exception otherwise.
         """
         df_header = df.columns.to_list()
-        schema_header = self.schema.columns.to_list()
-        if df_header != schema_header:
+        if df_header != self.schema_header:
             raise ValueError(
-                f"DataFrame header {df_header} does not match schema header {schema_header}."
+                f"DataFrame header {df_header} does not match schema header {self.schema_header}."
             )
 
     def fetch_df(self) -> pd.DataFrame:
@@ -109,17 +109,38 @@ class TblCsv(Tbl):
     """A table object that represents a CSV file."""
 
     def __init__(self, config: dict, schema: pd.DataFrame):
+        self.output_dir = config["output_dir"]
+        self.output_file = config["output_file"]
+        self.output_path = Path(self.output_dir) / self.output_file
+
         super().__init__(schema)
 
-    def _table_exists(self) -> bool: ...
+    def _table_exists(self) -> bool:
+        return self.output_path.exists()
 
-    def _create_table(self) -> None: ...
+    def _create_table(self) -> None:
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        schema_csv = pd.DataFrame(columns=self.schema_header).to_csv(index=False)
+        with open(self.output_path, "x") as f:
+            f.write(schema_csv)
+        logger.info(
+            f"Output CSV {self.output_path} does not exist. Initializing it with the correct schema."
+        )
 
-    def _validate_table(self) -> None: ...
+    def _validate_table(self) -> None:
+        # Validate that the structure matches the data being appended
+        csv_header = pd.read_csv(self.output_path, nrows=0).columns.to_list()
+        if csv_header != self.schema_header:
+            raise ValueError(
+                f"CSV header {csv_header} does not match schema header {self.schema_header}."
+            )
 
-    def _fetch_df(self) -> pd.DataFrame: ...
+    def _fetch_df(self) -> pd.DataFrame:
+        return pd.read_csv(self.output_path)
 
-    def _append(self, df: pd.DataFrame) -> None: ...
+    def _append(self, df: pd.DataFrame) -> None:
+        with open(self.output_path, "a") as f:
+            f.write(df.to_csv(header=False, index=False))
 
 
 class TblGoogleSheets(Tbl):
@@ -141,25 +162,22 @@ class TblGoogleSheets(Tbl):
         return self.worksheet_name in all_ws
 
     def _create_table(self) -> None:
-        schema_header = self.schema.columns.to_list()
-
         ws = self.spreadsheet.add_worksheet(
-            self.worksheet_name, rows=1, cols=len(schema_header)
+            self.worksheet_name, rows=1, cols=len(self.schema_header)
         )
-        ws.update([schema_header])
+        ws.update([self.schema_header])
         logger.info(
             f"Output Google Sheets worksheet {self.worksheet_name} in spreadsheet {self.spreadsheet_name} does not exist. It was created and initialized with the correct schema."
         )
 
     def _validate_table(self) -> None:
-        schema_header = self.schema.columns.to_list()
         ws = self.spreadsheet.worksheet(self.worksheet_name)
 
         # Validate that the structure matches the data being appended
         ws_header = ws.row_values(1)
-        if ws_header != schema_header:
+        if ws_header != self.schema_header:
             raise ValueError(
-                f"Worksheet header {ws_header} does not match schema header {schema_header}."
+                f"Worksheet header {ws_header} does not match schema header {self.schema_header}."
             )
 
     def _fetch_df(self) -> pd.DataFrame:
