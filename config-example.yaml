@@ -9,8 +9,8 @@ description_mapping:
   "grocery store": "Groceries"
   "market": "Groceries"
 
-ingest_output:
-  # mode: csv
-  mode: google_sheets
+ingest:
+  # db_type: csv
+  db_type: google_sheets
   spreadsheet_name: Transactions
   worksheet_name: Documents_RAW
