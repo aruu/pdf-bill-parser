@@ -69,17 +69,17 @@ def ingest() -> None:
         }
         for path in pdf_paths
     ]
-    # Ensure the DataFrame has the correct schema even when no PDFs are found.
     df_documents = pd.DataFrame(records)
-    if df_documents.empty:
-        logger.info("No new documents to ingest.")
-        return
+
     # Filter out documents that are already present in the output target
     df_documents = df_documents.merge(
         df_document_ids,
         on=["account", "document"],
         how="left_anti",
     )
+    if df_documents.empty:
+        logger.info("No new documents to ingest.")
+        return
 
     # Output to the specified target
     tbl_ingest.append(df_documents)
