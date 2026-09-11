@@ -1,6 +1,6 @@
 account_mapping:
   - pattern: "^Account Name 1"
-    parser: BillParserA
+    extractor: ExtractorA
 
 description_mapping:
   "^TAX": "Taxes"
@@ -14,3 +14,9 @@ ingest:
   db_type: google_sheets
   spreadsheet_name: Transactions
   worksheet_name: Documents_RAW
+
+extract:
+  # db_type: csv
+  db_type: google_sheets
+  spreadsheet_name: Transactions
+  worksheet_name: Documents_RAW_EXTRACTED
