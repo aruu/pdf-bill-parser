@@ -39,6 +39,8 @@ def ingest() -> None:
             tbl_ingest = TblCsv(
                 tbl_ingest_config,
                 schema=INGEST_SCHEMA,
+                default_output_dir=config["output_dir"],
+                default_output_file="ingest.csv",
             )
         case "google_sheets":
             gspread_credentials = json.loads(os.environ[config["env_var_gspread_json"]])

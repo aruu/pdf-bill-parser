@@ -108,9 +108,15 @@ class Tbl(ABC):
 class TblCsv(Tbl):
     """A table object that represents a CSV file."""
 
-    def __init__(self, config: dict, schema: pd.DataFrame):
-        self.output_dir = config["output_dir"]
-        self.output_file = config["output_file"]
+    def __init__(
+        self,
+        config: dict,
+        schema: pd.DataFrame,
+        default_output_dir: str,
+        default_output_file: str,
+    ):
+        self.output_dir = config.get("output_dir", default_output_dir)
+        self.output_file = config.get("output_file", default_output_file)
         self.output_path = Path(self.output_dir) / self.output_file
 
         super().__init__(schema)
